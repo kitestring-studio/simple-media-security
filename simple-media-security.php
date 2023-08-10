@@ -28,6 +28,8 @@ class Simple_Media_Security {
 		add_filter( 'wpf_meta_box_post_types', array( __CLASS__, 'add_attachment' ) );
 		add_action( 'template_redirect', array( __CLASS__, 'custom_media_redirect' ), 30 );
 
+		add_action( 'add_meta_boxes', array( __CLASS__, 'add_noindex_metabox' ), 10, 2 );
+		add_action( 'edit_attachment', array( __CLASS__, 'save_noindex_metabox_data' ), 10, 1 );
 	}
 
 	public static function add_attachment( $post_types ) {
@@ -83,47 +85,40 @@ class Simple_Media_Security {
 		}
 	}
 
-}
+	public static function add_noindex_metabox( $post_type, $post) {
+		if ( $post_type !== 'attachment' ) {
+			return;
+		}
 
-Simple_Media_Security::init();
-
-
-// Hook to add the metabox
-add_action('add_meta_boxes', 'add_noindex_metabox');
-
-// Function to add the metabox
-function add_noindex_metabox() {
-	add_meta_box(
-		'noindex_metabox', // ID of the metabox
-		'No Index Option', // Title
-		'noindex_metabox_callback', // Callback function
-		'attachment', // Post type (media attachment)
-		'side' // Context (side panel)
-	);
-}
-
-// Callback function to render the checkbox
-function noindex_metabox_callback($post) {
-	$noindex = get_post_meta($post->ID, '_noindex', true);
-	echo '<input type="checkbox" id="noindex_checkbox" name="noindex_checkbox" value="yes" ' . checked($noindex, 'yes', false) . ' />';
-	echo '<label for="noindex_checkbox">Do not index this media</label>';
-}
-
-
-// Hook to save the checkbox state
-add_action('edit_attachment', 'save_noindex_metabox_data', 10, 2);
-
-// Function to save the checkbox state
-function save_noindex_metabox_data($post_id ) {
-
-	$post = get_post( $post_id );
-	// Verify post type is attachment
-	if ($post->post_type != 'attachment') {
-		return;
+		add_meta_box(
+			'noindex_metabox', // ID of the metabox
+			'No Index Option', // Title
+			array(__CLASS__, 'noindex_metabox_callback'), // Callback function
+			'attachment', // Post type (media attachment)
+			'side' // Context (side panel)
+		);
 	}
 
-	// Save the checkbox state
-	$noindex_value = isset($_POST['noindex_checkbox']) ? 'yes' : 'no';
-//	wp_update_attachment_metadata($post_id, '_noindex', $noindex_value);
-	update_post_meta($post_id, '_noindex', $noindex_value);
+	public static function noindex_metabox_callback($post) {
+		$noindex = get_post_meta($post->ID, '_noindex', true);
+		echo '<input type="checkbox" id="noindex_checkbox" name="noindex_checkbox" value="yes" ' . checked($noindex, 'yes', false) . ' />';
+		echo '<label for="noindex_checkbox">Do not index this media</label>';
+	}
+
+	static function save_noindex_metabox_data($post_id ) {
+
+		$post = get_post( $post_id );
+		// Verify post type is attachment
+		if ($post->post_type != 'attachment') {
+			return;
+		}
+
+		// Save the checkbox state
+		$noindex_value = isset($_POST['noindex_checkbox']) ? 'yes' : 'no';
+	//	wp_update_attachment_metadata($post_id, '_noindex', $noindex_value);
+		update_post_meta($post_id, '_noindex', $noindex_value);
+	}
+
 }
+
+add_action('init', 'Simple_Media_Security::init' );
