@@ -96,7 +96,7 @@ class Simple_Media_Security {
 //							echo $file_contents;
 						}
 
-						self::serve_file( $file_path, $mime_type );
+//						self::serve_file( $file_path, $mime_type );
 
 					} else {
 						// Fallback to a designated 404 image if the file can't be read
@@ -122,38 +122,32 @@ class Simple_Media_Security {
 		}
 	}
 
+
 	private static function serve_file( $file_path, $mime_type ) {
 		$size  = filesize( $file_path );
 		$start = 0;
 		$end   = $size - 1;
 
 		if ( isset( $_SERVER['HTTP_RANGE'] ) ) {
-			list( $spec, $range ) = explode( '=', $_SERVER['HTTP_RANGE'], 2 );
-			if ( $spec != 'bytes' ) {
-				header( 'HTTP/1.1 400 Bad Request' );
-				exit;
-			}
-			list( $start, $range_end ) = explode( '-', $range, 2 );
-			$start = (int) $start;
-			$end   = ( isset( $range_end ) && is_numeric( $range_end ) ) ? (int) $range_end : $end;
+			list( $start, $end ) = self::request_range( $end );
 		}
 
 		$length = $end - $start + 1;
 
-// Open the file
+		// Open the file
 		$fp = fopen( $file_path, 'rb' );
 
-// Set the headers
+		// Set the headers
 		header( 'HTTP/1.1 206 Partial Content' );
 		header( "Content-Type: {$mime_type}" );
 		header( "Accept-Ranges: bytes" );
 		header( "Content-Range: bytes $start-$end/$size" );
 		header( "Content-Length: $length" );
 
-// Seek to the start of the range
+		// Seek to the start of the range
 		fseek( $fp, $start );
 
-// Output the file
+		// Output the file
 		$buffer = 1024 * 8; // Use an 8KB buffer
 		while ( ! feof( $fp ) && ( $p = ftell( $fp ) ) <= $end ) {
 			if ( $p + $buffer > $end ) {
@@ -167,6 +161,28 @@ class Simple_Media_Security {
 		fclose( $fp );
 		exit;
 	}
+
+	/**
+	 * @param int $end
+	 *
+	 * @return int[]|void
+	 */
+	protected static function request_range( $file_path ) {
+		$size  = filesize( $file_path );
+		$start = 0;
+		$end   = $size - 1;
+		list( $spec, $range ) = explode( '=', $_SERVER['HTTP_RANGE'], 2 );
+		if ( $spec != 'bytes' ) {
+			header( 'HTTP/1.1 400 Bad Request' );
+			exit;
+		}
+		list( $start, $range_end ) = explode( '-', $range, 2 );
+		$start = (int) $start;
+		$end   = ( isset( $range_end ) && is_numeric( $range_end ) ) ? (int) $range_end : $end;
+
+		return array( $start, $end );
+	}
+
 
 	public static function add_noindex_metabox( $post_type, $post ) {
 		if ( $post_type !== 'attachment' ) {
