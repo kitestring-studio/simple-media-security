@@ -22,14 +22,21 @@ if ( ! defined( 'ABSPATH' ) ) {
  * apply_filters( 'wpf_meta_box_post_types', $post_types )
  */
 class Simple_Media_Security {
-	protected function __construct() {}
+	protected function __construct() {
+	}
 
 	public static function init() {
+		if ( is_admin() ) {
+			$fusion_admin = WP_Fusion::instance()->admin_interfaces;
+			add_action( 'edit_attachment', array( $fusion_admin, 'save_meta_box_data' ) );
+
+			add_action( 'add_meta_boxes', array( __CLASS__, 'add_noindex_metabox' ), 10, 2 );
+			add_action( 'edit_attachment', array( __CLASS__, 'save_noindex_metabox_data' ), 10, 1 );
+		}
+
 		add_filter( 'wpf_meta_box_post_types', array( __CLASS__, 'add_attachment' ) );
 		add_action( 'template_redirect', array( __CLASS__, 'custom_media_redirect' ), 30 );
 
-		add_action( 'add_meta_boxes', array( __CLASS__, 'add_noindex_metabox' ), 10, 2 );
-		add_action( 'edit_attachment', array( __CLASS__, 'save_noindex_metabox_data' ), 10, 1 );
 	}
 
 	public static function add_attachment( $post_types ) {
@@ -40,7 +47,7 @@ class Simple_Media_Security {
 
 	public static function custom_media_redirect() {
 		// return if post_type is not media or attachment
-		if ( ! is_attachment() || ! class_exists('WP_Fusion') ) {
+		if ( ! is_attachment() || ! class_exists( 'WP_Fusion' ) ) {
 			return;
 		}
 
@@ -59,11 +66,11 @@ class Simple_Media_Security {
 				if ( $file_path && file_exists( $file_path ) ) {
 					$file_contents = file_get_contents( $file_path );
 
-					$noindex = get_post_meta($post->ID, '_noindex', true);
+					$noindex = get_post_meta( $post->ID, '_noindex', true );
 
 					// Add noindex header if needed
-					if ($noindex == 'yes') {
-						header("X-Robots-Tag: noindex", true);
+					if ( $noindex == 'yes' ) {
+						header( "X-Robots-Tag: noindex", true );
 					}
 
 					if ( $file_contents !== false ) {
@@ -85,7 +92,7 @@ class Simple_Media_Security {
 		}
 	}
 
-	public static function add_noindex_metabox( $post_type, $post) {
+	public static function add_noindex_metabox( $post_type, $post ) {
 		if ( $post_type !== 'attachment' ) {
 			return;
 		}
@@ -93,32 +100,32 @@ class Simple_Media_Security {
 		add_meta_box(
 			'noindex_metabox', // ID of the metabox
 			'No Index Option', // Title
-			array(__CLASS__, 'noindex_metabox_callback'), // Callback function
+			array( __CLASS__, 'noindex_metabox_callback' ), // Callback function
 			'attachment', // Post type (media attachment)
 			'side' // Context (side panel)
 		);
 	}
 
-	public static function noindex_metabox_callback($post) {
-		$noindex = get_post_meta($post->ID, '_noindex', true);
-		echo '<input type="checkbox" id="noindex_checkbox" name="noindex_checkbox" value="yes" ' . checked($noindex, 'yes', false) . ' />';
+	public static function noindex_metabox_callback( $post ) {
+		$noindex = get_post_meta( $post->ID, '_noindex', true );
+		echo '<input type="checkbox" id="noindex_checkbox" name="noindex_checkbox" value="yes" ' . checked( $noindex, 'yes', false ) . ' />';
 		echo '<label for="noindex_checkbox">Do not index this media</label>';
 	}
 
-	static function save_noindex_metabox_data($post_id ) {
+	static function save_noindex_metabox_data( $post_id ) {
 
 		$post = get_post( $post_id );
 		// Verify post type is attachment
-		if ($post->post_type != 'attachment') {
+		if ( $post->post_type != 'attachment' ) {
 			return;
 		}
 
 		// Save the checkbox state
-		$noindex_value = isset($_POST['noindex_checkbox']) ? 'yes' : 'no';
-	//	wp_update_attachment_metadata($post_id, '_noindex', $noindex_value);
-		update_post_meta($post_id, '_noindex', $noindex_value);
+		$noindex_value = isset( $_POST['noindex_checkbox'] ) ? 'yes' : 'no';
+		//	wp_update_attachment_metadata($post_id, '_noindex', $noindex_value);
+		update_post_meta( $post_id, '_noindex', $noindex_value );
 	}
 
 }
 
-add_action('init', 'Simple_Media_Security::init' );
+add_action( 'init', 'Simple_Media_Security::init' );
