@@ -46,6 +46,8 @@ class Simple_Media_Security {
 	}
 
 	public static function custom_media_redirect() {
+		define( 'SOME_THRESHOLD_SIZE', 1000000 );
+
 		// return if post_type is not media or attachment
 		if ( ! is_attachment() || ! class_exists( 'WP_Fusion' ) ) {
 			return;
@@ -62,9 +64,12 @@ class Simple_Media_Security {
 			if ( strpos( $mime_type, 'image' ) !== false || strpos( $mime_type, 'audio' ) !== false || $mime_type === 'application/pdf' ) {
 				$file_path = get_attached_file( get_the_ID() );
 
+				$shouldStream = ( strpos( $mime_type, 'video' ) !== false || strpos( $mime_type, 'audio' ) !== false ) && filesize( $file_path ) > SOME_THRESHOLD_SIZE;
+
 				// If the file exists, serve its content
 				if ( $file_path && file_exists( $file_path ) ) {
-					$file_contents = file_get_contents( $file_path );
+//					$file_contents = file_get_contents( $file_path );
+					$file_contents = $shouldStream ? fopen( $file_path, 'rb' ) : file_get_contents( $file_path );
 
 					$noindex = get_post_meta( $post->ID, '_noindex', true );
 
@@ -75,8 +80,33 @@ class Simple_Media_Security {
 
 					if ( $file_contents !== false ) {
 						header( "Content-Type: {$mime_type}" );
-						echo $file_contents;
-						exit;
+//						echo $file_contents;
+//						readfile( $file_path );
+//						exit;
+
+						if ( $shouldStream ) {
+							while ( ! feof( $file_contents ) ) {
+								echo fread( $file_contents, 8192 );
+								flush();
+							}
+							fclose( $file_contents );
+						} else {
+							header( 'Content-Length: ' . filesize( $file_path ) );
+							readfile( $file_path );
+//							echo $file_contents;
+						}
+
+						self::serve_file( $file_path, $mime_type );
+
+					} else {
+						// Fallback to a designated 404 image if the file can't be read
+						$file_path_404 = '/path/to/your/404/image/on/filesystem.jpg'; // Update this path
+						if ( file_exists( $file_path_404 ) ) {
+							$file_contents_404 = file_get_contents( $file_path_404 );
+							header( 'Content-Type: image/jpeg' ); // or whatever MIME type your 404 image is
+							echo $file_contents_404;
+							exit;
+						}
 					}
 				} else {
 					// Fallback to a designated 404 image if the file can't be read
@@ -90,6 +120,52 @@ class Simple_Media_Security {
 				}
 			}
 		}
+	}
+
+	private static function serve_file( $file_path, $mime_type ) {
+		$size  = filesize( $file_path );
+		$start = 0;
+		$end   = $size - 1;
+
+		if ( isset( $_SERVER['HTTP_RANGE'] ) ) {
+			list( $spec, $range ) = explode( '=', $_SERVER['HTTP_RANGE'], 2 );
+			if ( $spec != 'bytes' ) {
+				header( 'HTTP/1.1 400 Bad Request' );
+				exit;
+			}
+			list( $start, $range_end ) = explode( '-', $range, 2 );
+			$start = (int) $start;
+			$end   = ( isset( $range_end ) && is_numeric( $range_end ) ) ? (int) $range_end : $end;
+		}
+
+		$length = $end - $start + 1;
+
+// Open the file
+		$fp = fopen( $file_path, 'rb' );
+
+// Set the headers
+		header( 'HTTP/1.1 206 Partial Content' );
+		header( "Content-Type: {$mime_type}" );
+		header( "Accept-Ranges: bytes" );
+		header( "Content-Range: bytes $start-$end/$size" );
+		header( "Content-Length: $length" );
+
+// Seek to the start of the range
+		fseek( $fp, $start );
+
+// Output the file
+		$buffer = 1024 * 8; // Use an 8KB buffer
+		while ( ! feof( $fp ) && ( $p = ftell( $fp ) ) <= $end ) {
+			if ( $p + $buffer > $end ) {
+				$buffer = $end - $p + 1;
+			}
+			set_time_limit( 0 ); // Reset time limit for big files
+			echo fread( $fp, $buffer );
+			flush(); // Flush the output buffer
+		}
+
+		fclose( $fp );
+		exit;
 	}
 
 	public static function add_noindex_metabox( $post_type, $post ) {
@@ -113,6 +189,13 @@ class Simple_Media_Security {
 	}
 
 	static function save_noindex_metabox_data( $post_id ) {
+
+		if ( ! current_user_can( 'edit_post', $post_id )
+//		     || ! wp_verify_nonce($_POST['your_nonce_field'], 'your_nonce_action')
+		) {
+			return;
+		}
+
 
 		$post = get_post( $post_id );
 		// Verify post type is attachment
