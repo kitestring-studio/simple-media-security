@@ -113,8 +113,8 @@ class Simple_Media_Security {
 	private function set_headers($file_path, $mime_type, $post) {
 		header('Content-Type: ' . $mime_type);
 		header('Content-Length: ' . filesize($file_path));
-		header('Content-Disposition: inline; filename="' . basename(get_the_title($post->ID)) . '"');
-		header('Cache-Control: must-revalidate');
+		header('Content-Disposition: inline; filename="' . basename(get_the_title($post->ID)) . '.mp3"');
+//		header('Cache-Control: must-revalidate');
 //		header('Pragma: public');
 	}
 
@@ -125,26 +125,28 @@ class Simple_Media_Security {
 		exit;
 	}
 
-	private function get_range_info($file_size) {
-		$range = isset($_SERVER['HTTP_RANGE']) ? $_SERVER['HTTP_RANGE'] : null;
-		if ($range) {
-			$start = $end = 0;
-			list(, $range) = explode('=', $range, 2);
-			if (strpos($range, ',') !== false) {
-				header('HTTP/1.1 416 Requested Range Not Satisfiable');
+	private function get_range_info( $file_size ) {
+		$range = isset( $_SERVER['HTTP_RANGE'] ) ? $_SERVER['HTTP_RANGE'] : null;
+		if ( $range ) {
+			$from = $to = 0;
+			list( , $range ) = explode( '=', $range, 2 );
+			if ( strpos( $range, ',' ) !== false ) {
+				header( 'HTTP/1.1 416 Requested Range Not Satisfiable' );
 				exit;
 			}
-			if ($range == '-') {
-				$start = max(0, $file_size - intval(substr($range, 1)));
+			if ( $range == '-' ) {
+				$from = max( 0, $file_size - intval( substr( $range, 1 ) ) );
 			} else {
-				$range = explode('-', $range);
-				$start = $range[0];
-				$end = (isset($range[1]) && is_numeric($range[1])) ? $range[1] : $file_size - 1;
+				$range = explode( '-', $range );
+				$from  = $range[0];
+				$to    = ( isset( $range[1] ) && is_numeric( $range[1] ) ) ? $range[1] : $file_size - 1;
 			}
-			$start = max($start, 0);
-			$end = min($end, $file_size - 1);
-			return compact('start', 'end', 'file_size');
+			$from = (int) max( $from, 0 );
+			$to   = (int) min( $to, $file_size - 1 );
+
+			return compact( 'from', 'to', 'file_size' );
 		}
+
 		return null;
 	}
 
