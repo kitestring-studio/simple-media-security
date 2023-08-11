@@ -63,7 +63,6 @@ class Simple_Media_Security {
 			return;
 		}
 
-		// Check if the attachment is an image, audio, or PDF
 		$mime_type = get_post_mime_type( $post );
 		if ( strpos( $mime_type, 'image' ) === false && strpos( $mime_type, 'audio' ) === false && $mime_type !== 'application/pdf' ) {
 			return;
@@ -86,6 +85,7 @@ class Simple_Media_Security {
 
 		if ( $file_contents === false ) {
 			self::return_404();
+
 			return;
 		}
 
@@ -97,13 +97,79 @@ class Simple_Media_Security {
 			header( "X-Robots-Tag: noindex", true );
 		}
 
-		$rangeHeader = isset($_SERVER['HTTP_RANGE']) ? $_SERVER['HTTP_RANGE'] : '';
-		$rangeInfo = self::get_range_info($rangeHeader, filesize($file_path));
+		$rangeHeader = isset( $_SERVER['HTTP_RANGE'] ) ? $_SERVER['HTTP_RANGE'] : '';
+		$rangeInfo   = self::get_range_info( $rangeHeader, filesize( $file_path ) );
 
-		if ($rangeInfo) {
-			self::output_range_content($file_path, $rangeInfo, $shouldStream);
+		if ( $rangeInfo ) {
+			self::output_range_content( $file_path, $rangeInfo, $shouldStream );
 		} else {
 			self::output_entire_content( $shouldStream, $file_contents, $file_path );
+		}
+	}
+
+	/**
+	 * @return void
+	 */
+	protected static function return_404(): void {
+		// Fallback to a designated 404 image if the file can't be read
+		$file_path_404 = '/path/to/your/404/image/on/filesystem.jpg'; // Update this path
+		if ( file_exists( $file_path_404 ) ) {
+			$file_contents_404 = file_get_contents( $file_path_404 );
+			header( 'Content-Type: image/jpeg' ); // or whatever MIME type your 404 image is
+			echo $file_contents_404;
+			exit;
+		}
+	}
+
+	public static function get_range_info( $httpRange, $file_size ) {
+		$range = '';
+		if ( $httpRange ) {
+			list( $param, $range ) = explode( '=', $httpRange );
+			if ( strtolower( trim( $param ) ) != 'bytes' ) {
+				return null;
+			}
+		}
+
+		if ( $range ) {
+			list( $from, $to ) = explode( '-', $range );
+			$from = intval( $from );
+			$to   = $to ? intval( $to ) : $file_size - 1;
+
+			if ( $to < $from || $from < 0 || $to >= $file_size ) {
+				return null;
+			}
+
+			return array( 'from' => $from, 'to' => $to );
+		}
+
+		return null;
+	}
+
+	public static function output_range_content( $file_path, $rangeInfo, $shouldStream ) {
+		$file_size = filesize( $file_path );
+		$from      = $rangeInfo['from'];
+		$to        = $rangeInfo['to'];
+
+		header( 'HTTP/1.1 206 Partial Content' );
+		header( "Content-Range: bytes $from-$to/$file_size" );
+		header( 'Content-Length: ' . ( $to - $from + 1 ) );
+
+		if ( $shouldStream ) {
+			$file_contents = fopen( $file_path, 'rb' );
+			fseek( $file_contents, $from );
+			while ( ! feof( $file_contents ) && ( $p = ftell( $file_contents ) ) <= $to ) {
+				echo fread( $file_contents, min( 8192, $to - $p + 1 ) );
+				flush();
+			}
+			fclose( $file_contents );
+		} else {
+			$fp = fopen( $file_path, 'rb' );
+			fseek( $fp, $from );
+			while ( ! feof( $fp ) && ( $p = ftell( $fp ) ) <= $to ) {
+				echo fread( $fp, min( 8192, $to - $p + 1 ) );
+				flush();
+			}
+			fclose( $fp );
 		}
 	}
 
@@ -126,75 +192,6 @@ class Simple_Media_Security {
 			readfile( $file_path ); // efffectively the same as echo $file_contents;
 		}
 	}
-
-	/**
-	 * @return void
-	 */
-	protected static function return_404(): void {
-		// Fallback to a designated 404 image if the file can't be read
-		$file_path_404 = '/path/to/your/404/image/on/filesystem.jpg'; // Update this path
-		if ( file_exists( $file_path_404 ) ) {
-			$file_contents_404 = file_get_contents( $file_path_404 );
-			header( 'Content-Type: image/jpeg' ); // or whatever MIME type your 404 image is
-			echo $file_contents_404;
-			exit;
-		}
-	}
-
-
-	public static function get_range_info($httpRange, $file_size) {
-		$range = '';
-		if ($httpRange) {
-			list($param, $range) = explode('=', $httpRange);
-			if (strtolower(trim($param)) != 'bytes') {
-				return null;
-			}
-		}
-
-		if ($range) {
-			list($from, $to) = explode('-', $range);
-			$from = intval($from);
-			$to = $to ? intval($to) : $file_size - 1;
-
-			if ($to < $from || $from < 0 || $to >= $file_size) {
-				return null;
-			}
-
-			return array('from' => $from, 'to' => $to);
-		}
-
-		return null;
-	}
-
-	public static function output_range_content($file_path, $rangeInfo, $shouldStream) {
-		$file_size = filesize($file_path);
-		$from = $rangeInfo['from'];
-		$to = $rangeInfo['to'];
-
-		header('HTTP/1.1 206 Partial Content');
-		header("Content-Range: bytes $from-$to/$file_size");
-		header('Content-Length: ' . ($to - $from + 1));
-
-		if ($shouldStream) {
-			$file_contents = fopen($file_path, 'rb');
-			fseek($file_contents, $from);
-			while (!feof($file_contents) && ($p = ftell($file_contents)) <= $to) {
-				echo fread($file_contents, min(8192, $to - $p + 1));
-				flush();
-			}
-			fclose($file_contents);
-		} else {
-			$fp = fopen($file_path, 'rb');
-			fseek($fp, $from);
-			while (!feof($fp) && ($p = ftell($fp)) <= $to) {
-				echo fread($fp, min(8192, $to - $p + 1));
-				flush();
-			}
-			fclose($fp);
-		}
-	}
-
-
 
 	public static function add_noindex_metabox( $post_type, $post ) {
 		if ( $post_type !== 'attachment' ) {
