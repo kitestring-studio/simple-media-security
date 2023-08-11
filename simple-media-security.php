@@ -48,7 +48,8 @@ class Simple_Media_Security {
 	}
 
 	public static function custom_media_redirect() {
-		self::$chunk_threshold = 512000; // 500KB
+//		self::$chunk_threshold = 512000; // 500KB
+		self::$chunk_threshold = 8192;
 
 		// return if post_type is not media or attachment
 		if ( ! is_attachment() || ! class_exists( 'WP_Fusion' ) ) {
@@ -96,6 +97,24 @@ class Simple_Media_Security {
 			header( "X-Robots-Tag: noindex", true );
 		}
 
+		$rangeHeader = isset($_SERVER['HTTP_RANGE']) ? $_SERVER['HTTP_RANGE'] : '';
+		$rangeInfo = self::get_range_info($rangeHeader, filesize($file_path));
+
+		if ($rangeInfo) {
+			self::output_range_content($file_path, $rangeInfo, $shouldStream);
+		} else {
+			self::output_entire_content( $shouldStream, $file_contents, $file_path );
+		}
+	}
+
+	/**
+	 * @param bool $shouldStream
+	 * @param  $file_contents
+	 * @param string $file_path
+	 *
+	 * @return void
+	 */
+	protected static function output_entire_content( bool $shouldStream, $file_contents, string $file_path ): void {
 		if ( $shouldStream ) {
 			while ( ! feof( $file_contents ) ) {
 				echo fread( $file_contents, 8192 );
@@ -123,65 +142,58 @@ class Simple_Media_Security {
 	}
 
 
-	private static function serve_file( $file_path, $mime_type ) {
-		$size  = filesize( $file_path );
-		$start = 0;
-		$end   = $size - 1;
-
-		if ( isset( $_SERVER['HTTP_RANGE'] ) ) {
-			list( $start, $end ) = self::request_range( $end );
-		}
-
-		$length = $end - $start + 1;
-
-		// Open the file
-		$fp = fopen( $file_path, 'rb' );
-
-		// Set the headers
-		header( 'HTTP/1.1 206 Partial Content' );
-		header( "Content-Type: {$mime_type}" );
-		header( "Accept-Ranges: bytes" );
-		header( "Content-Range: bytes $start-$end/$size" );
-		header( "Content-Length: $length" );
-
-		// Seek to the start of the range
-		fseek( $fp, $start );
-
-		// Output the file
-		$buffer = 1024 * 8; // Use an 8KB buffer
-		while ( ! feof( $fp ) && ( $p = ftell( $fp ) ) <= $end ) {
-			if ( $p + $buffer > $end ) {
-				$buffer = $end - $p + 1;
+	public static function get_range_info($httpRange, $file_size) {
+		$range = '';
+		if ($httpRange) {
+			list($param, $range) = explode('=', $httpRange);
+			if (strtolower(trim($param)) != 'bytes') {
+				return null;
 			}
-			set_time_limit( 0 ); // Reset time limit for big files
-			echo fread( $fp, $buffer );
-			flush(); // Flush the output buffer
 		}
 
-		fclose( $fp );
-		exit;
-	}
+		if ($range) {
+			list($from, $to) = explode('-', $range);
+			$from = intval($from);
+			$to = $to ? intval($to) : $file_size - 1;
 
-	/**
-	 * @param int $end
-	 *
-	 * @return int[]|void
-	 */
-	protected static function request_range( $file_path ) {
-		$size  = filesize( $file_path );
-		$start = 0;
-		$end   = $size - 1;
-		list( $spec, $range ) = explode( '=', $_SERVER['HTTP_RANGE'], 2 );
-		if ( $spec != 'bytes' ) {
-			header( 'HTTP/1.1 400 Bad Request' );
-			exit;
+			if ($to < $from || $from < 0 || $to >= $file_size) {
+				return null;
+			}
+
+			return array('from' => $from, 'to' => $to);
 		}
-		list( $start, $range_end ) = explode( '-', $range, 2 );
-		$start = (int) $start;
-		$end   = ( isset( $range_end ) && is_numeric( $range_end ) ) ? (int) $range_end : $end;
 
-		return array( $start, $end );
+		return null;
 	}
+
+	public static function output_range_content($file_path, $rangeInfo, $shouldStream) {
+		$file_size = filesize($file_path);
+		$from = $rangeInfo['from'];
+		$to = $rangeInfo['to'];
+
+		header('HTTP/1.1 206 Partial Content');
+		header("Content-Range: bytes $from-$to/$file_size");
+		header('Content-Length: ' . ($to - $from + 1));
+
+		if ($shouldStream) {
+			$file_contents = fopen($file_path, 'rb');
+			fseek($file_contents, $from);
+			while (!feof($file_contents) && ($p = ftell($file_contents)) <= $to) {
+				echo fread($file_contents, min(8192, $to - $p + 1));
+				flush();
+			}
+			fclose($file_contents);
+		} else {
+			$fp = fopen($file_path, 'rb');
+			fseek($fp, $from);
+			while (!feof($fp) && ($p = ftell($fp)) <= $to) {
+				echo fread($fp, min(8192, $to - $p + 1));
+				flush();
+			}
+			fclose($fp);
+		}
+	}
+
 
 
 	public static function add_noindex_metabox( $post_type, $post ) {
