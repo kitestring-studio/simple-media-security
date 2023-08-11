@@ -22,126 +22,129 @@ if ( ! defined( 'ABSPATH' ) ) {
  * apply_filters( 'wpf_meta_box_post_types', $post_types )
  */
 class Simple_Media_Security {
-	private static int $chunk_threshold;
+	private static int $chunk_threshold = 512000; // 500KB
+	private WP_Fusion $wp_fusion;
+	private $fusion_access;
+	private $fusion_admin;
 
-	protected function __construct() {
+	public function __construct() {
 	}
 
-	public static function init() {
-		if ( is_admin() ) {
-			$fusion_admin = WP_Fusion::instance()->admin_interfaces;
-			add_action( 'edit_attachment', array( $fusion_admin, 'save_meta_box_data' ) );
-
-			add_action( 'add_meta_boxes', array( __CLASS__, 'add_noindex_metabox' ), 10, 2 );
-			add_action( 'edit_attachment', array( __CLASS__, 'save_noindex_metabox_data' ), 10, 1 );
+	public function init() {
+		if (!class_exists('WP_Fusion')) {
+			return;
 		}
 
-		add_filter( 'wpf_meta_box_post_types', array( __CLASS__, 'add_attachment' ) );
-		add_action( 'template_redirect', array( __CLASS__, 'custom_media_redirect' ), 30 );
+		$wp_fusion  = new WP_Fusion(); // Assume WP_Fusion class is properly defined and instantiated
 
+		$this->wp_fusion = $wp_fusion;
+		$this->fusion_access = $wp_fusion->instance()->access;
+		$this->fusion_admin = $wp_fusion->instance()->admin_interfaces;
+		if (is_admin()) {
+			add_action('edit_attachment', array($this->fusion_admin, 'save_meta_box_data'));
+			add_action('add_meta_boxes', array($this, 'add_noindex_metabox'), 10, 2);
+			add_action('edit_attachment', array($this, 'save_noindex_metabox_data'), 10, 1);
+		}
+
+		add_filter('wpf_meta_box_post_types', array($this, 'add_attachment'));
+		add_action('template_redirect', array($this, 'custom_media_redirect'), 30);
 	}
 
-	public static function add_attachment( $post_types ) {
+	public function add_attachment($post_types) {
 		$post_types['attachment'] = 'attachment';
-
 		return $post_types;
 	}
 
-	public static function custom_media_redirect() {
-//		self::$chunk_threshold = 512000; // 500KB
-		self::$chunk_threshold = 8192;
+	private function can_user_access($post) {
+		$has_access = $this->fusion_access->user_can_access($post->ID);
+		if ( !$has_access ) {
+			wp_die( __('You do not have permission to view this file.') );
+			return false;
+		}
+		return true;
+	}
 
-		// return if post_type is not media or attachment
-		if ( ! is_attachment() || ! class_exists( 'WP_Fusion' ) ) {
+	private function file_exists($file_path) {
+		return file_exists($file_path) && is_readable($file_path);
+	}
+
+	public function custom_media_redirect() {
+		if (!$this->is_valid_redirect()) {
 			return;
 		}
 
-		global $post;
-
-		$fusion = WP_Fusion::instance()->access;
-		if ( ! is_user_logged_in() || ! $fusion->user_can_access( $post->ID ) ) {
+		$post = $GLOBALS['post'];
+		if (!$this->can_user_access($post)) {
 			return;
 		}
 
-		$mime_type = get_post_mime_type( $post );
-		if ( strpos( $mime_type, 'image' ) === false && strpos( $mime_type, 'audio' ) === false && $mime_type !== 'application/pdf' ) {
+		$file_path = get_attached_file(get_the_ID());
+		if (!$this->file_exists($file_path)) {
+			$this->return_404();
 			return;
 		}
 
-		$file_path = get_attached_file( get_the_ID() );
-		if ( ! $file_path || ! file_exists( $file_path ) ) {
-			self::return_404();
+		$mime_type = get_post_mime_type($post);
+		$shouldStream = $this->should_stream($file_path, $mime_type);
+		$this->set_headers($file_path, $mime_type, $post);
 
+		$file_contents = $this->get_file_contents($file_path, $shouldStream);
+		if ($file_contents === false) {
+			$this->return_404();
 			return;
 		}
 
-		$shouldStream = ( strpos( $mime_type, 'video' ) !== false || strpos( $mime_type, 'audio' ) !== false ) && filesize( $file_path ) > self::$chunk_threshold;
-
-		if ( $shouldStream ) {
-			$file_contents = fopen( $file_path, 'rb' );
+		$rangeInfo = $this->get_range_info(filesize($file_path));
+		if ($rangeInfo) {
+			$this->output_range_content($file_path, $rangeInfo, $shouldStream);
 		} else {
-			$file_contents = true; // Set this to true to indicate that the file should be read normally
-		}
-
-		if ( $file_contents === false ) {
-			self::return_404();
-
-			return;
-		}
-
-		header( "Content-Type: {$mime_type}" );
-		header( 'Content-Disposition: inline; filename="' . basename( $file_path ) . '"' );
-
-		$noindex = get_post_meta( $post->ID, '_noindex', true );
-		if ( $noindex == 'yes' ) {
-			header( "X-Robots-Tag: noindex", true );
-		}
-
-		$rangeHeader = isset( $_SERVER['HTTP_RANGE'] ) ? $_SERVER['HTTP_RANGE'] : '';
-		$rangeInfo   = self::get_range_info( $rangeHeader, filesize( $file_path ) );
-
-		if ( $rangeInfo ) {
-			self::output_range_content( $file_path, $rangeInfo, $shouldStream );
-		} else {
-			self::output_entire_content( $shouldStream, $file_contents, $file_path );
+			$this->output_entire_content($shouldStream, $file_contents, $file_path);
 		}
 	}
 
-	/**
-	 * @return void
-	 */
-	protected static function return_404(): void {
-		// Fallback to a designated 404 image if the file can't be read
-		$file_path_404 = '/path/to/your/404/image/on/filesystem.jpg'; // Update this path
-		if ( file_exists( $file_path_404 ) ) {
-			$file_contents_404 = file_get_contents( $file_path_404 );
-			header( 'Content-Type: image/jpeg' ); // or whatever MIME type your 404 image is
-			echo $file_contents_404;
-			exit;
-		}
+	private function should_stream($file_path, $mime_type) {
+		return strpos($mime_type, 'video/') !== false || filesize($file_path) > self::$chunk_threshold;
 	}
 
-	public static function get_range_info( $httpRange, $file_size ) {
-		$range = '';
-		if ( $httpRange ) {
-			list( $param, $range ) = explode( '=', $httpRange );
-			if ( strtolower( trim( $param ) ) != 'bytes' ) {
-				return null;
+	private function get_file_contents($file_path, $shouldStream) {
+		return $shouldStream ? null : fopen($file_path, 'rb');
+	}
+
+	private function set_headers($file_path, $mime_type, $post) {
+		header('Content-Type: ' . $mime_type);
+		header('Content-Length: ' . filesize($file_path));
+		header('Content-Disposition: inline; filename="' . basename(get_the_title($post->ID)) . '"');
+		header('Cache-Control: must-revalidate');
+//		header('Pragma: public');
+	}
+
+	private function return_404() {
+		status_header(404);
+		nocache_headers();
+		include( get_query_template('404') );
+		exit;
+	}
+
+	private function get_range_info($file_size) {
+		$range = isset($_SERVER['HTTP_RANGE']) ? $_SERVER['HTTP_RANGE'] : null;
+		if ($range) {
+			$start = $end = 0;
+			list(, $range) = explode('=', $range, 2);
+			if (strpos($range, ',') !== false) {
+				header('HTTP/1.1 416 Requested Range Not Satisfiable');
+				exit;
 			}
-		}
-
-		if ( $range ) {
-			list( $from, $to ) = explode( '-', $range );
-			$from = intval( $from );
-			$to   = $to ? intval( $to ) : $file_size - 1;
-
-			if ( $to < $from || $from < 0 || $to >= $file_size ) {
-				return null;
+			if ($range == '-') {
+				$start = max(0, $file_size - intval(substr($range, 1)));
+			} else {
+				$range = explode('-', $range);
+				$start = $range[0];
+				$end = (isset($range[1]) && is_numeric($range[1])) ? $range[1] : $file_size - 1;
 			}
-
-			return array( 'from' => $from, 'to' => $to );
+			$start = max($start, 0);
+			$end = min($end, $file_size - 1);
+			return compact('start', 'end', 'file_size');
 		}
-
 		return null;
 	}
 
@@ -182,6 +185,7 @@ class Simple_Media_Security {
 	 */
 	protected static function output_entire_content( bool $shouldStream, $file_contents, string $file_path ): void {
 		if ( $shouldStream ) {
+			$file_contents = fopen( $file_path, 'rb');
 			while ( ! feof( $file_contents ) ) {
 				echo fread( $file_contents, 8192 );
 				flush();
@@ -213,27 +217,25 @@ class Simple_Media_Security {
 		echo '<label for="noindex_checkbox">Do not index this media</label>';
 	}
 
-	static function save_noindex_metabox_data( $post_id ) {
-
-		if ( ! current_user_can( 'edit_post', $post_id )
-//		     || ! wp_verify_nonce($_POST['your_nonce_field'], 'your_nonce_action')
-		) {
+	static function save_noindex_metabox_data($post_id) {
+		if (!current_user_can('edit_post', $post_id)) {
 			return;
 		}
 
-
-		$post = get_post( $post_id );
-		// Verify post type is attachment
-		if ( $post->post_type != 'attachment' ) {
+		$post = get_post($post_id);
+		if ($post->post_type != 'attachment') {
 			return;
 		}
 
-		// Save the checkbox state
-		$noindex_value = isset( $_POST['noindex_checkbox'] ) ? 'yes' : 'no';
-		//	wp_update_attachment_metadata($post_id, '_noindex', $noindex_value);
-		update_post_meta( $post_id, '_noindex', $noindex_value );
+		$noindex_value = isset($_POST['noindex_checkbox']) ? 'yes' : 'no';
+		update_post_meta($post_id, '_noindex', $noindex_value);
+	}
+
+	private function is_valid_redirect() {
+		return !is_admin() && is_attachment();
 	}
 
 }
 
-add_action( 'init', 'Simple_Media_Security::init' );
+$media_security = new Simple_Media_Security();
+add_action('init', array($media_security, 'init'));
