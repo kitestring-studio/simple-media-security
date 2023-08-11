@@ -22,6 +22,8 @@ if ( ! defined( 'ABSPATH' ) ) {
  * apply_filters( 'wpf_meta_box_post_types', $post_types )
  */
 class Simple_Media_Security {
+	private static int $chunk_threshold;
+
 	protected function __construct() {
 	}
 
@@ -46,7 +48,7 @@ class Simple_Media_Security {
 	}
 
 	public static function custom_media_redirect() {
-		define( 'SOME_THRESHOLD_SIZE', 1000000 );
+		self::$chunk_threshold = 1048576; // 1MB
 
 		// return if post_type is not media or attachment
 		if ( ! is_attachment() || ! class_exists( 'WP_Fusion' ) ) {
@@ -54,71 +56,71 @@ class Simple_Media_Security {
 		}
 
 		global $post;
-		// Only proceed if the user is logged in
+
 		$fusion = WP_Fusion::instance()->access;
 
-		if ( is_user_logged_in() && $fusion->user_can_access( $post->ID ) ) {
-			$mime_type = get_post_mime_type();
+		if ( ! is_user_logged_in() || ! $fusion->user_can_access( $post->ID ) ) {
+			return;
+		}
+		$mime_type = get_post_mime_type();
+		// Check if the attachment is an image, audio, or PDF
+		if ( strpos( $mime_type, 'image' ) === false && strpos( $mime_type, 'audio' ) === false && $mime_type !== 'application/pdf' ) {
+			return;
+		}
 
-			// Check if the attachment is an image, audio, or PDF
-			if ( strpos( $mime_type, 'image' ) !== false || strpos( $mime_type, 'audio' ) !== false || $mime_type === 'application/pdf' ) {
-				$file_path = get_attached_file( get_the_ID() );
+		$file_path = get_attached_file( get_the_ID() );
+		if ( ! $file_path || ! file_exists( $file_path ) ) {
+			self::return_404();
 
-				$shouldStream = ( strpos( $mime_type, 'video' ) !== false || strpos( $mime_type, 'audio' ) !== false ) && filesize( $file_path ) > SOME_THRESHOLD_SIZE;
+			return;
+		}
 
-				// If the file exists, serve its content
-				if ( $file_path && file_exists( $file_path ) ) {
-//					$file_contents = file_get_contents( $file_path );
-					$file_contents = $shouldStream ? fopen( $file_path, 'rb' ) : file_get_contents( $file_path );
+		$shouldStream = ( strpos( $mime_type, 'video' ) !== false || strpos( $mime_type, 'audio' ) !== false ) && filesize( $file_path ) > self::$chunk_threshold;
 
-					$noindex = get_post_meta( $post->ID, '_noindex', true );
+		// If the file exists, serve its content
+		$file_contents = $shouldStream ? fopen( $file_path, 'rb' ) : file_get_contents( $file_path );
 
-					// Add noindex header if needed
-					if ( $noindex == 'yes' ) {
-						header( "X-Robots-Tag: noindex", true );
-					}
+		$noindex = get_post_meta( $post->ID, '_noindex', true );
 
-					if ( $file_contents !== false ) {
-						header( "Content-Type: {$mime_type}" );
-//						echo $file_contents;
-//						readfile( $file_path );
-//						exit;
+		// Add noindex header if needed
+		if ( $noindex == 'yes' ) {
+			header( "X-Robots-Tag: noindex", true );
+		}
 
-						if ( $shouldStream ) {
-							while ( ! feof( $file_contents ) ) {
-								echo fread( $file_contents, 8192 );
-								flush();
-							}
-							fclose( $file_contents );
-						} else {
-							header( 'Content-Length: ' . filesize( $file_path ) );
-							readfile( $file_path );
-//							echo $file_contents;
-						}
+		if ( $file_contents !== false ) {
+			header( "Content-Type: {$mime_type}" );
 
-//						self::serve_file( $file_path, $mime_type );
-
-					} else {
-						// Fallback to a designated 404 image if the file can't be read
-						$file_path_404 = '/path/to/your/404/image/on/filesystem.jpg'; // Update this path
-						if ( file_exists( $file_path_404 ) ) {
-							$file_contents_404 = file_get_contents( $file_path_404 );
-							header( 'Content-Type: image/jpeg' ); // or whatever MIME type your 404 image is
-							echo $file_contents_404;
-							exit;
-						}
-					}
-				} else {
-					// Fallback to a designated 404 image if the file can't be read
-					$file_path_404 = '/path/to/your/404/image/on/filesystem.jpg'; // Update this path
-					if ( file_exists( $file_path_404 ) ) {
-						$file_contents_404 = file_get_contents( $file_path_404 );
-						header( 'Content-Type: image/jpeg' ); // or whatever MIME type your 404 image is
-						echo $file_contents_404;
-						exit;
-					}
+			if ( $shouldStream ) {
+				while ( ! feof( $file_contents ) ) {
+					echo fread( $file_contents, 8192 );
+					flush();
 				}
+				fclose( $file_contents );
+			} else {
+				header( 'Content-Length: ' . filesize( $file_path ) );
+				readfile( $file_path ); // efffectively the same as echo $file_contents;
 			}
+
+//			self::serve_file( $file_path, $mime_type );
+
+		} else {
+			self::return_404();
+		}
+
+
+	}
+
+	/**
+	 * @return void
+	 */
+	protected static function return_404(): void {
+		// Fallback to a designated 404 image if the file can't be read
+		$file_path_404 = '/path/to/your/404/image/on/filesystem.jpg'; // Update this path
+		if ( file_exists( $file_path_404 ) ) {
+			$file_contents_404 = file_get_contents( $file_path_404 );
+			header( 'Content-Type: image/jpeg' ); // or whatever MIME type your 404 image is
+			echo $file_contents_404;
+			exit;
 		}
 	}
 
