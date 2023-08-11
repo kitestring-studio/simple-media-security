@@ -48,7 +48,7 @@ class Simple_Media_Security {
 	}
 
 	public static function custom_media_redirect() {
-		self::$chunk_threshold = 1048576; // 1MB
+		self::$chunk_threshold = 512000; // 500KB
 
 		// return if post_type is not media or attachment
 		if ( ! is_attachment() || ! class_exists( 'WP_Fusion' ) ) {
@@ -58,12 +58,12 @@ class Simple_Media_Security {
 		global $post;
 
 		$fusion = WP_Fusion::instance()->access;
-
 		if ( ! is_user_logged_in() || ! $fusion->user_can_access( $post->ID ) ) {
 			return;
 		}
-		$mime_type = get_post_mime_type();
+
 		// Check if the attachment is an image, audio, or PDF
+		$mime_type = get_post_mime_type( $post );
 		if ( strpos( $mime_type, 'image' ) === false && strpos( $mime_type, 'audio' ) === false && $mime_type !== 'application/pdf' ) {
 			return;
 		}
@@ -77,37 +77,35 @@ class Simple_Media_Security {
 
 		$shouldStream = ( strpos( $mime_type, 'video' ) !== false || strpos( $mime_type, 'audio' ) !== false ) && filesize( $file_path ) > self::$chunk_threshold;
 
-		// If the file exists, serve its content
-		$file_contents = $shouldStream ? fopen( $file_path, 'rb' ) : file_get_contents( $file_path );
+		if ( $shouldStream ) {
+			$file_contents = fopen( $file_path, 'rb' );
+		} else {
+			$file_contents = true; // Set this to true to indicate that the file should be read normally
+		}
+
+		if ( $file_contents === false ) {
+			self::return_404();
+			return;
+		}
+
+		header( "Content-Type: {$mime_type}" );
+		header( 'Content-Disposition: inline; filename="' . basename( $file_path ) . '"' );
 
 		$noindex = get_post_meta( $post->ID, '_noindex', true );
-
-		// Add noindex header if needed
 		if ( $noindex == 'yes' ) {
 			header( "X-Robots-Tag: noindex", true );
 		}
 
-		if ( $file_contents !== false ) {
-			header( "Content-Type: {$mime_type}" );
-
-			if ( $shouldStream ) {
-				while ( ! feof( $file_contents ) ) {
-					echo fread( $file_contents, 8192 );
-					flush();
-				}
-				fclose( $file_contents );
-			} else {
-				header( 'Content-Length: ' . filesize( $file_path ) );
-				readfile( $file_path ); // efffectively the same as echo $file_contents;
+		if ( $shouldStream ) {
+			while ( ! feof( $file_contents ) ) {
+				echo fread( $file_contents, 8192 );
+				flush();
 			}
-
-//			self::serve_file( $file_path, $mime_type );
-
+			fclose( $file_contents );
 		} else {
-			self::return_404();
+			header( 'Content-Length: ' . filesize( $file_path ) );
+			readfile( $file_path ); // efffectively the same as echo $file_contents;
 		}
-
-
 	}
 
 	/**
