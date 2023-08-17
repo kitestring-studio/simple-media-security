@@ -1,7 +1,7 @@
 <?php
 /*
 Plugin Name: Simple Media Security
-Plugin URI: https://github.com/kitestring/simple-media-security
+Plugin URI: https://github.com/kitestring-studio/simple-media-security
 Description: Allows media files to be protected by WP Fusion tags
 Version: 0.1.0
 Requires at least: 6.2
@@ -82,12 +82,50 @@ class Simple_Media_Security {
 
 		add_filter( 'wpf_meta_box_post_types', array( $this, 'add_attachment' ) );
 		add_action( 'template_redirect', array( $this, 'custom_media_redirect' ), 30 );
+
+		add_shortcode( 'download', array( $this, 'download_shortcode' ) );
 	}
 
 	public function add_attachment( $post_types ) {
 		$post_types['attachment'] = 'attachment';
 
 		return $post_types;
+	}
+
+	public function download_shortcode( $atts ) {
+		// Extracting the slug attribute
+		$atts = shortcode_atts( array( 'slug' => '' ), $atts, 'download' );
+		$slug = $atts['slug'];
+
+		// Querying for the attachment by slug
+		$args        = array(
+			'name'        => $slug,
+			'post_type'   => 'attachment',
+			'post_status' => 'inherit',
+			'numberposts' => 1
+		);
+		$attachments = get_posts( $args );
+
+		if ( $attachments ) {
+			$attachment = $attachments[0];
+			$url        = get_permalink( $attachment );
+			$file_url   = wp_get_attachment_url( $attachment->ID );
+			$filetype   = wp_check_filetype( $file_url );
+
+			$title = get_the_title( $attachment );
+
+			// Detecting the file type and selecting an icon
+			$icon = '';
+			if ( $filetype['ext'] === 'pdf' ) {
+				$icon = '<i class="fas fa-file-pdf"></i>'; // Font Awesome PDF icon
+			} elseif ( in_array( $filetype['ext'], array( 'mp3', 'wav', 'ogg' ) ) ) {
+				$icon = '<i class="fas fa-file-audio"></i>'; // Font Awesome audio icon
+			}
+
+			return "<a href='{$url}' download>{$icon} Download $title</a>";
+		}
+
+		return 'File not found.';
 	}
 
 	public function custom_media_redirect() {
@@ -159,7 +197,11 @@ class Simple_Media_Security {
 	private function set_headers( $file_path, $mime_type, $post ) {
 		header( 'Content-Type: ' . $mime_type );
 		header( 'Content-Length: ' . filesize( $file_path ) );
-		header( 'Content-Disposition: inline; filename="' . basename( get_the_title( $post->ID ) ) . '.mp3"' );
+
+		$extension = explode( '/', $mime_type )[1];
+
+		// @TODO set content-disposition to attachment/inline conditionally? only streaming audio should be inline?
+		header( 'Content-Disposition: attachment; filename="' . basename( get_the_title( $post->ID ) ) . '.' . $extension . '"' );
 //		header('Cache-Control: must-revalidate');
 //		header('Pragma: public');
 	}
