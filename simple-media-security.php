@@ -80,10 +80,45 @@ class Simple_Media_Security {
 			add_action( 'edit_attachment', array( $this, 'save_noindex_metabox_data' ), 10, 1 );
 		}
 
+		add_action( 'wp_audio_shortcode_override', array( $this, 'maybe_set_media_override' ), 10, 3 );
+
 		add_filter( 'wpf_meta_box_post_types', array( $this, 'add_attachment' ) );
 		add_action( 'template_redirect', array( $this, 'custom_media_redirect' ), 30 );
 
 		add_shortcode( 'download', array( $this, 'download_shortcode' ) );
+	}
+
+	public function modify_attachment_url( $url, $post_id ) {
+		$post = get_post( $post_id );
+		if ( $post->post_type !== 'attachment' ) {
+			return $url;
+		}
+
+		return get_permalink( $post );
+	}
+
+	/**
+	 * if this is a protected media file, set a hook to use in the future
+	 *
+	 * @param $attr
+	 * @param $content
+	 * @param $instance
+	 *
+	 * @return string
+	 */
+	public function maybe_set_media_override($attr, $content, $instance ): string {
+		$mp3_url = $attr['mp3'];
+		// get $post from $mp3_url
+		$post_id = url_to_postid( $mp3_url );
+
+		// @TODO I need a method to check weather this file should even be protected. don't mess with normal files.
+		// eg if $this->should_protect_media_file( $post_id )
+		$is_protected = true;
+
+		if ( $is_protected ) {
+			add_filter( 'wp_get_attachment_url', array( $this, 'modify_attachment_url' ), 10, 2 );
+		}
+		return "";
 	}
 
 	public function add_attachment( $post_types ) {
