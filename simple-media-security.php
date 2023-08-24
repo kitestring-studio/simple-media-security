@@ -80,7 +80,7 @@ class Simple_Media_Security {
 			add_action( 'edit_attachment', array( $this, 'save_noindex_metabox_data' ), 10, 1 );
 		}
 
-		add_action( 'wp_audio_shortcode_override', array( $this, 'maybe_set_media_override' ), 10, 3 );
+		add_action( 'wp_audio_shortcode_override', array( $this, 'maybe_set_media_override' ), 10, 4 );
 
 		add_filter( 'wpf_meta_box_post_types', array( $this, 'add_attachment' ) );
 		add_action( 'template_redirect', array( $this, 'custom_media_redirect' ), 30 );
@@ -106,7 +106,11 @@ class Simple_Media_Security {
 	 *
 	 * @return string
 	 */
-	public function maybe_set_media_override($attr, $content, $instance ): string {
+	public function maybe_set_media_override( $html, $attr, $content, $instance ): string {
+		if ( ! isset( $attr['mp3'] ) ) {
+			return "";
+		}
+
 		$mp3_url = $attr['mp3'];
 		// get $post from $mp3_url
 		$post_id = url_to_postid( $mp3_url );
