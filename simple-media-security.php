@@ -3,7 +3,7 @@
  * Plugin Name: Simple Media Security
  * Plugin URI: https://github.com/kitestring-studio/simple-media-security
  * Description: Allows media files to be protected by WP Fusion tags
- * Version: 0.1.1
+ * Version: 0.1.2
  * Requires at least: 6.2
  * Requires PHP: 7.4
  * Author: Kitestring Studio
