@@ -94,12 +94,16 @@ class Simple_Media_Security {
 			return $url;
 		}
 
+		// remove because this should only run for the [audio] shortcode
+		remove_filter( 'wp_get_attachment_url', array( $this, 'modify_attachment_url' ), 10 );
+
 		return get_permalink( $post );
 	}
 
 	/**
 	 * if this is a protected media file, set a hook to use in the future
 	 *
+	 * @param $html
 	 * @param $attr
 	 * @param $content
 	 * @param $instance
@@ -122,6 +126,7 @@ class Simple_Media_Security {
 		if ( $is_protected ) {
 			add_filter( 'wp_get_attachment_url', array( $this, 'modify_attachment_url' ), 10, 2 );
 		}
+
 		return "";
 	}
 
@@ -155,9 +160,9 @@ class Simple_Media_Security {
 			// Detecting the file type and selecting an icon
 			$icon = '';
 			if ( $extension === 'pdf' ) {
-				$icon = '<span class="dashicons-before dashicons-pdf"></span>'; // Font Awesome PDF icon
+				$icon = '<i class="fas fa-file-pdf"></i>'; // Font Awesome PDF icon
 			} elseif ( in_array( $extension, array( 'mp3', 'wav', 'ogg' ) ) ) {
-				$icon = '<span class="dashicons-before dashicons-media-audio"></span>'; // Font Awesome audio icon
+				$icon = '<i class="fas fa-file-audio"></i>'; // Font Awesome audio icon
 			}
 
 			return "<a href='{$url}' download>{$icon} Download $title</a>";
