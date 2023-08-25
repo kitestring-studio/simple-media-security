@@ -48,8 +48,15 @@ class Simple_Media_Security {
 
 	public static function noindex_metabox_callback( $post ) {
 		$noindex = get_post_meta( $post->ID, '_noindex', true );
+		$protect_media = get_post_meta( $post->ID, '_protect_media', true );
+
 		echo '<input type="checkbox" id="noindex_checkbox" name="noindex_checkbox" value="yes" ' . checked( $noindex, 'yes', false ) . ' />';
 		echo '<label for="noindex_checkbox">Do not index this media</label>';
+
+		echo '<br>';
+
+		echo '<input type="checkbox" id="protect_media_checkbox" name="protect_media_checkbox" value="yes" ' . checked( $protect_media, 'yes', false ) . ' />';
+		echo '<label for="protect_media_checkbox">Require login to access</label>';
 	}
 
 	static function save_noindex_metabox_data( $post_id ) {
@@ -63,7 +70,15 @@ class Simple_Media_Security {
 		}
 
 		$noindex_value = isset( $_POST['noindex_checkbox'] ) ? 'yes' : 'no';
+		$protect_media_value = isset( $_POST['protect_media_checkbox'] ) ? 'yes' : 'no';
+
 		update_post_meta( $post_id, '_noindex', $noindex_value );
+		update_post_meta( $post_id, '_protect_media', $protect_media_value );
+	}
+
+	public function is_media_protected( $post_id ) {
+		$protect_media = get_post_meta( $post_id, '_protect_media', true );
+		return $protect_media === 'yes';
 	}
 
 	public function init() {
@@ -190,6 +205,10 @@ class Simple_Media_Security {
 		}
 
 		$post = $GLOBALS['post'];
+
+		if ( ! $this->is_media_protected( $post->ID)) {
+			return;
+		}
 		if ( ! $this->can_user_access( $post ) ) {
 			return;
 		}
