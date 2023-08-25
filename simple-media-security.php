@@ -1,16 +1,17 @@
 <?php
-/*
-Plugin Name: Simple Media Security
-Plugin URI: https://github.com/kitestring-studio/simple-media-security
-Description: Allows media files to be protected by WP Fusion tags
-Version: 0.1.0
-Requires at least: 6.2
-Requires PHP: 7.4
-Author: Kitestring Studio
-Author URI: https://kitestring.studio
-License: GPLv2 or later
-Text Domain: simple-download-controls
-Network: false
+/**
+	Plugin Name: Simple Media Security
+	Plugin URI: https://github.com/kitestring-studio/simple-media-security
+	Description: Allows media files to be protected by WP Fusion tags
+	Version: 0.1.0
+	Requires at least: 6.2
+	Requires PHP: 7.4
+	Author: Kitestring Studio
+	Author URI: https://kitestring.studio
+	License: GPLv2 or later
+	Text Domain: simple-download-controls
+	Network: false
+	GitHub Plugin URI: https://github.com/kitestring-studio/simple-media-security
 */
 
 if ( ! defined( 'ABSPATH' ) ) {
