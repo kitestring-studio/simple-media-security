@@ -15,6 +15,8 @@
  * Primary Branch: main
  */
 
+namespace KitestringStudio;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
@@ -86,9 +88,9 @@ class Simple_Media_Security {
 			return;
 		}
 
-		$wp_fusion = new WP_Fusion(); // Assume WP_Fusion class is properly defined and instantiated
+		$wp_fusion = new \WP_Fusion(); // Assume WP_Fusion class is properly defined and instantiated
 
-		$this->wp_fusion     = $wp_fusion;
+//		$this->wp_fusion     = $wp_fusion;
 		$this->fusion_access = $wp_fusion->instance()->access;
 		$this->fusion_admin  = $wp_fusion->instance()->admin_interfaces;
 		if ( is_admin() ) {
@@ -140,7 +142,7 @@ class Simple_Media_Security {
 		// eg if $this->should_protect_media_file( $post_id )
 		$is_protected = true;
 
-		if ( $is_protected ) {
+		if ( $this->is_media_protected( $post_id ) ) {
 			add_filter( 'wp_get_attachment_url', array( $this, 'modify_attachment_url' ), 10, 2 );
 		}
 
