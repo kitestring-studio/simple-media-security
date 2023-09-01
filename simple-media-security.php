@@ -194,8 +194,26 @@ class Simple_Media_Security {
 	public function stream_shortcode( $atts ) {
 		$atts = shortcode_atts( array( 'slug' => '', 'mp3' => '' ), $atts, 'stream' );
 		$file = $atts['mp3'];
+		$slug = $atts['slug'];
 
-		return do_shortcode( "[audio mp3=$file ]" );
+		// Querying for the attachment by slug
+		$args        = array(
+			'name'        => $slug,
+			'post_type'   => 'attachment',
+			'post_status' => 'inherit',
+			'numberposts' => 1
+		);
+		$attachments = get_posts( $args );
+
+		if ( $attachments && $attachments[0]) {
+			$attachment = $attachments[0];
+			$file       = wp_get_attachment_url( $attachment->ID );
+
+			return do_shortcode( "[audio mp3=$file ]" );
+		}
+
+		return 'File not found.';
+
 	}
 
 	/**
