@@ -105,6 +105,7 @@ class Simple_Media_Security {
 		add_action( 'template_redirect', array( $this, 'custom_media_redirect' ), 30 );
 
 		add_shortcode( 'download', array( $this, 'download_shortcode' ) );
+		add_shortcode( 'stream', array( $this, 'stream_shortcode' ) );
 	}
 
 	public function modify_attachment_url( $url, $post_id ) {
@@ -190,6 +191,13 @@ class Simple_Media_Security {
 		return 'File not found.';
 	}
 
+	public function stream_shortcode( $atts ) {
+		$atts = shortcode_atts( array( 'slug' => '', 'mp3' => '' ), $atts, 'stream' );
+		$file = $atts['mp3'];
+
+		return do_shortcode( "[audio mp3=$file ]" );
+	}
+
 	/**
 	 * @param $attachment
 	 *
@@ -209,7 +217,7 @@ class Simple_Media_Security {
 		$post = $GLOBALS['post'];
 
 		if ( ! $this->is_media_protected( $post->ID)) {
-			return;
+//			return;
 		}
 		if ( ! $this->can_user_access( $post ) ) {
 			return;
