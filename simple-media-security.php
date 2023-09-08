@@ -156,14 +156,20 @@ class Simple_Media_Security {
 		return $post_types;
 	}
 
+	/**
+	 * supports extension types: pdf, mp3, wav, ogg
+	 *
+	 * @param $atts
+	 *
+	 * @return string
+	 */
 	public function download_shortcode( $atts ) {
 		// Extracting the slug attribute
-		$atts = shortcode_atts( array( 'slug' => '' ), $atts, 'download' );
-		$slug = $atts['slug'];
+		$atts = shortcode_atts( array( 'slug' => '', 'style' => '' ), $atts, 'download' );
 
-		// Querying for the attachment by slug
+		// args for querying the attachment by slug
 		$args        = array(
-			'name'        => $slug,
+			'name'        => esc_attr(sanitize_key( $atts['slug'] )),
 			'post_type'   => 'attachment',
 			'post_status' => 'inherit',
 			'numberposts' => 1
@@ -174,6 +180,8 @@ class Simple_Media_Security {
 			$attachment = $attachments[0];
 			$url        = get_permalink( $attachment );
 			$extension  = $this->get_attachment_extension( $attachment );
+			// set $style from $atts['style'] and sanitize it
+			$style = sanitize_text_field( $atts['style'] );
 
 			$title = get_the_title( $attachment );
 
@@ -185,7 +193,7 @@ class Simple_Media_Security {
 				$icon = '<i class="fas fa-file-audio"></i>'; // Font Awesome audio icon
 			}
 
-			return "<a href='{$url}' download>{$icon} Download $title</a>";
+			return "<div class='sms-download'><a href='{$url}' style='$style' download>{$icon} Download $title</a></div>";
 		}
 
 		return 'File not found.';
