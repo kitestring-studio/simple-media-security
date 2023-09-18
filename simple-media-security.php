@@ -3,7 +3,7 @@
  * Plugin Name: Simple Media Security
  * Plugin URI: https://github.com/kitestring-studio/simple-media-security
  * Description: Allows media files to be protected by WP Fusion tags
- * Version: 0.1.3
+ * Version: 0.1.4
  * Requires at least: 6.2
  * Requires PHP: 7.4
  * Author: Kitestring Studio
@@ -165,11 +165,11 @@ class Simple_Media_Security {
 	 */
 	public function download_shortcode( $atts ) {
 		// Extracting the slug attribute
-		$atts = shortcode_atts( array( 'slug' => '', 'style' => '' ), $atts, 'download' );
+		$atts = shortcode_atts( array( 'slug' => '', 'style' => '', 'title' => null ), $atts, 'download' );
 
 		// args for querying the attachment by slug
 		$args        = array(
-			'name'        => esc_attr(sanitize_key( $atts['slug'] )),
+			'name'        => esc_attr( sanitize_key( $atts['slug'] ) ),
 			'post_type'   => 'attachment',
 			'post_status' => 'inherit',
 			'numberposts' => 1
@@ -180,10 +180,6 @@ class Simple_Media_Security {
 			$attachment = $attachments[0];
 			$url        = get_permalink( $attachment );
 			$extension  = $this->get_attachment_extension( $attachment );
-			// set $style from $atts['style'] and sanitize it
-			$style = sanitize_text_field( $atts['style'] );
-
-			$title = get_the_title( $attachment );
 
 			// Detecting the file type and selecting an icon
 			$icon = '';
@@ -192,6 +188,10 @@ class Simple_Media_Security {
 			} elseif ( in_array( $extension, array( 'mp3', 'wav', 'ogg' ) ) ) {
 				$icon = '<i class="fas fa-file-audio"></i>'; // Font Awesome audio icon
 			}
+
+			$title = $atts['title'] ?? get_the_title( $attachment );
+			$title = esc_attr( sanitize_text_field( $title ) );
+			$style = esc_attr( sanitize_text_field( $atts['style'] ) );
 
 			return "<div class='sms-download'><a href='{$url}' style='$style' download>{$icon} Download $title</a></div>";
 		}
